@@ -1,30 +1,36 @@
 
-import { _decorator, Component, Node, director, TransitionGui } from 'cc';
+import { _decorator, Component, Node, director} from 'cc';
 const { ccclass, property } = _decorator;
 
 @ccclass('MainMenu')
 export class MainMenu extends Component {
+       
+    /**
+    * Метод для перехода в сцену пианино
+    */
+   public startGamePiano() {        
+        // 1. Сначала подгружаем сцену в фоне
+        director.preloadScene("GameScenePiano", () => {
+            // 2. Когда всё готово — переключаемся
+            director.loadScene("GameScenePiano");
+        });
+   }
 
-    // Тип выбранного инструмента для передачи в игровую сцену
-    public static selectedInstrument: string = 'piano';
-
-    onSelectPiano() {
-        MainMenu.selectedInstrument = 'piano';
-        this.startGame();
-    }
-
-    onSelectGuitar() {
-        MainMenu.selectedInstrument = 'guitar';
-        this.startGame();
-    }
-
-    private startGame() {
-        // Плавный переход на сцену с игрой
-        director.loadScene("GameScene");
-    }
-
-    onOpenSettings() {
-        // Логика открытия окна настроек
-        console.log("Настройки: проверка доступа к микрофону");
-    }
+   /**
+    * Метод для перехода в сцену гитары
+    */
+   public startGameGuitar() {
+        director.preloadScene("GameSceneGuitar", () => {
+            director.loadScene("GameSceneGuitar");
+        });
+   }
+   
+      /**
+    * Метод для перехода в главное меню
+    */
+   public BackMenu() {
+        director.preloadScene("MenuScene", () => {
+            director.loadScene("MenuScene");
+        });
+   }
 }
