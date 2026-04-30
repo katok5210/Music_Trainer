@@ -1,4 +1,5 @@
-import { _decorator, Component, Node, Label, Slider, ProgressBar } from 'cc';
+import { _decorator, Component, Node, Label, Slider, ProgressBar, Prefab, 
+    instantiate, Vec3, Color, Sprite, tween, UIOpacity } from 'cc';
 import { PitchDetector } from 'pitchy';
 
 const { ccclass, property } = _decorator;
@@ -6,8 +7,31 @@ const { ccclass, property } = _decorator;
 @ccclass('PitchDetectorComponent')
 export class PitchDetectorComponent extends Component {
 
-    @property(Label) // Создаем слот для Label в редакторе
+    @property(Prefab)
+    public notePrefab: Prefab | null = null;
+
+    @property(Node)
+    public spawnParent: Node | null = null;
+
+    @property(Label)
     public noteLabel: Label | null = null;
+
+    // Словарь цветов для нот (система "Радуга" или До-ре-ми)
+    private readonly NOTE_COLORS: Record<string, Color> = {
+        "C": new Color(255, 0, 0),    // До - Красный
+        "C#": new Color(255, 0, 0),
+        "D": new Color(255, 127, 0),  // Ре - Оранжевый
+        "D#": new Color(255, 127, 0),
+        "E": new Color(255, 255, 0),  // Ми - Желтый
+        "F": new Color(0, 255, 0),    // Фа - Зеленый
+        "F#": new Color(0, 255, 0),
+        "G": new Color(0, 0, 255),    // Соль - Синий
+        "G#": new Color(0, 0, 255),
+        "A": new Color(75, 0, 130),   // Ля - Индиго
+        "A#": new Color(75, 0, 130),
+        "B": new Color(148, 0, 211)   // Си - Фиолетовый
+    };
+
     private lastNote: string = "";
 
     @property(Slider)
@@ -78,36 +102,25 @@ export class PitchDetectorComponent extends Component {
     update(deltaTime: number) {
         if (!this.analyserNode || !this.pitchDetector || !this.inputBuffer || !this.audioContext) return;
 
-        // Копируем данные из анализатора в буфер
         this.analyserNode.getFloatTimeDomainData(this.inputBuffer);
 
-        if (!this.checkThreshold()) {
-            return;
-        }
+        if (!this.checkThreshold()) return;
         
-        // Определяем частоту и уверенность (clarity)
         const [pitch, clarity] = this.pitchDetector.findPitch(this.inputBuffer, this.audioContext.sampleRate);
-        //console.log("this.pitchDetector", this.pitchDetector)
-        //console.log(`Уверенность: ${clarity.toFixed(2)}`);
-        //console.log(`Частота: ${pitch.toFixed(2)}`);
-        if (clarity > 0.8 && pitch > 24) { // Если сигнал достаточно чистый
-            // console.log(`Частота: ${pitch.toFixed(2)} Гц`);
-            let noteInfo = this.getNoteByFrequency(pitch);
-
-            console.log("noteInfo", noteInfo)
+        
+        if (clarity > 0.8 && pitch > 24) {
+            let noteInfo: any = this.getNoteByFrequency(pitch);
 
             if (noteInfo && this.noteLabel) {
                 const displayText = `${noteInfo.noteName}${noteInfo.octave}`;
                 
-                // Обновляем текст только если нота изменилась (чтобы не перегружать движок)
                 if (displayText !== this.lastNote) {
                     this.noteLabel.string = displayText;
                     this.lastNote = displayText;
+                    this.spawnNoteSprite(noteInfo); // Вызываем наш новый метод
                 }
             }
-            
         }
-
     }
 
     checkThreshold(): boolean {
@@ -150,6 +163,49 @@ export class PitchDetectorComponent extends Component {
             console.log("Режим: Пианино");
         }
     }
+    
+    /**
+     * Создает визуальный эффект для ноты
+     */
+spawnNoteSprite(noteInfo: any) {
+    if (!this.notePrefab || !this.spawnParent) return;
+
+    // Создаем экземпляр префаба
+    const newNote = instantiate(this.notePrefab);
+    newNote.parent = this.spawnParent;
+
+    // 1. Установка цвета (через компонент Sprite)
+    const sprite = newNote.getComponent(Sprite);
+    if (sprite) {
+        // NOTE_COLORS берем из предыдущего шага
+        sprite.color = this.NOTE_COLORS[noteInfo.noteName] || Color.WHITE;
+    }
+
+    // 2. Установка начальной позиции
+    // Ставим в (0,0,0) относительно родителя или со случайным смещением по X
+    newNote.setPosition(new Vec3((Math.random() - 0.5) * 100, 0, 0));
+
+    // 3. Подготовка к изменению прозрачности
+    // Проверяем наличие UIOpacity, без него свойство opacity не сработает
+    let uiOpacity = newNote.getComponent(UIOpacity);
+    if (!uiOpacity) {
+        uiOpacity = newNote.addComponent(UIOpacity);
+    }
+
+    // 4. Анимация движения ВВЕРХ
+    tween(newNote)
+        .by(2, { position: new Vec3(0, 400, 0) }, { easing: 'sineOut' })
+        .start();
+
+    // 5. Анимация исчезновения и УДАЛЕНИЕ
+    tween(uiOpacity)
+        .to(2, { opacity: 0 }, { easing: 'fade' })
+        .call(() => {
+            console.log("Удаление ноты:", noteInfo.noteName);
+            newNote.destroy(); // Обязательное удаление из сцены и памяти
+        })
+        .start();
+}
 }
 
 
