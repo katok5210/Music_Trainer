@@ -52,7 +52,7 @@
     },
     "autoReleaseAssets": false,
     "_globals": {
-      "__id__": 43
+      "__id__": 44
     },
     "_id": "bcc3088a-cc36-442b-ab47-fc8609bc9f7b"
   },
@@ -79,13 +79,13 @@
       },
       {
         "__id__": 35
+      },
+      {
+        "__id__": 38
       }
     ],
     "_active": true,
     "_components": [
-      {
-        "__id__": 38
-      },
       {
         "__id__": 39
       },
@@ -97,6 +97,9 @@
       },
       {
         "__id__": 42
+      },
+      {
+        "__id__": 43
       }
     ],
     "_prefab": null,
@@ -1445,6 +1448,47 @@
     "_id": "daiEivZOBMWohVayTEHjHr"
   },
   {
+    "__type__": "cc.Node",
+    "_name": "SpawnContainer",
+    "_objFlags": 0,
+    "__editorExtras__": {},
+    "_parent": {
+      "__id__": 2
+    },
+    "_children": [],
+    "_active": true,
+    "_components": [],
+    "_prefab": null,
+    "_lpos": {
+      "__type__": "cc.Vec3",
+      "x": -126.676,
+      "y": -169.853,
+      "z": 0
+    },
+    "_lrot": {
+      "__type__": "cc.Quat",
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "w": 1
+    },
+    "_lscale": {
+      "__type__": "cc.Vec3",
+      "x": 1,
+      "y": 1,
+      "z": 1
+    },
+    "_mobility": 0,
+    "_layer": 1073741824,
+    "_euler": {
+      "__type__": "cc.Vec3",
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "_id": "c6n9JoZ6VO374k5OVEXHlp"
+  },
+  {
     "__type__": "cc.UITransform",
     "_name": "",
     "_objFlags": 0,
@@ -1534,38 +1578,49 @@
     },
     "_enabled": true,
     "__prefab": null,
-    "notePrefab": null,
-    "spawnParent": null,
-    "noteLabel": null,
-    "sensitivitySlider": null,
-    "volumeMeter": null,
+    "notePrefab": {
+      "__uuid__": "eefd9187-298a-4bc8-b968-3e6f577a164b",
+      "__expectedType__": "cc.Prefab"
+    },
+    "spawnParent": {
+      "__id__": 38
+    },
+    "noteLabel": {
+      "__id__": 37
+    },
+    "sensitivitySlider": {
+      "__id__": 30
+    },
+    "volumeMeter": {
+      "__id__": 34
+    },
     "_id": "33vIC/jnZFq4TS0NbVy5No"
   },
   {
     "__type__": "cc.SceneGlobals",
     "ambient": {
-      "__id__": 44
-    },
-    "shadows": {
       "__id__": 45
     },
-    "_skybox": {
+    "shadows": {
       "__id__": 46
     },
-    "fog": {
+    "_skybox": {
       "__id__": 47
     },
-    "octree": {
+    "fog": {
       "__id__": 48
     },
-    "skin": {
+    "octree": {
       "__id__": 49
     },
-    "lightProbeInfo": {
+    "skin": {
       "__id__": 50
     },
-    "postSettings": {
+    "lightProbeInfo": {
       "__id__": 51
+    },
+    "postSettings": {
+      "__id__": 52
     },
     "bakedWithStationaryMainLight": false,
     "bakedWithHighpLightmap": false
