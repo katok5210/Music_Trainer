@@ -13,6 +13,7 @@ export class LessonManager {
 
     public readonly events = new EventTarget();
     public currentLesson: LessonType = LessonType.FIND_OCTAVE;
+    private currentInstrument = 'piano';
 
     private masteredNotes: Set<string> = new Set();
     private readonly REQUIRED_NOTES_COUNT = 7;
@@ -31,21 +32,46 @@ export class LessonManager {
     }
 
     // Сохранение прогресса
+    public setInstrument(instrument: string) {
+        const nextInstrument = instrument === 'guitar' ? 'guitar' : 'piano';
+
+        if (this.currentInstrument === nextInstrument) return;
+
+        this.currentInstrument = nextInstrument;
+        this.masteredNotes.clear();
+        this.currentNoteIndex = 0;
+        this.loadProgress();
+        this.events.emit(LessonManager.LESSON_CHANGED_EVENT, this.currentLesson);
+    }
+
     public saveProgress() {
-        sys.localStorage.setItem('currentLesson', this.currentLesson.toString());
+        sys.localStorage.setItem(this.getProgressKey(), this.currentLesson.toString());
     }
 
     private loadProgress() {
-        let saved = sys.localStorage.getItem('currentLesson');
+        let saved = sys.localStorage.getItem(this.getProgressKey());
+
+        if (saved === null && this.currentInstrument === 'piano') {
+            saved = sys.localStorage.getItem('currentLesson');
+        }
+
         // saved = 0;
         if (saved !== null) {
             this.currentLesson = parseInt(saved);
+        } else {
+            this.currentLesson = LessonType.FIND_OCTAVE;
         }
+    }
+
+    private getProgressKey(): string {
+        return `currentLesson:${this.currentInstrument}`;
     }
 
     public nextLesson() {
         if (this.currentLesson < LessonType.COMPLETED) {
             this.currentLesson++;
+            this.masteredNotes.clear();
+            this.currentNoteIndex = 0;
             this.saveProgress();
             this.events.emit(LessonManager.LESSON_CHANGED_EVENT, this.currentLesson);
         }

@@ -3,6 +3,7 @@ import { _decorator, Component, Node, Label, Slider, ProgressBar, Prefab,
 import { PitchDetector } from 'pitchy';
 import { LessonManager, LessonType } from './LessonManager';
 import { KeyboardManager } from './KeyboardManager';
+import { GuitarFretboardManager } from './GuitarFretboardManager';
 
 const { ccclass, property } = _decorator;
 
@@ -16,48 +17,37 @@ type LessonText = {
     requiredHits?: number;
     progress?: string;
     play?: string;
+    targetNote?: string;
+    targetNotes?: string[];
     successSequence?: string[];
     completeSequence?: string[];
 };
 
 type LessonTextsData = {
     lessons: Record<string, LessonText>;
+    guitarLessons?: Record<string, LessonText>;
 };
 
 const DEFAULT_LESSON_TEXTS: LessonTextsData = {
     lessons: {
         "0": {
-            helper: "Урок 1: Найди 4-ю октаву. Просто играй ноты, а я скажу, если ты в правильной октаве!",
-            initial: "Найди 4-ю октаву на своем инструменте",
-            lower: "Бери правее! (Выше)",
-            higher: "Бери левее! (Ниже)",
-            octaveProgress: "Сделано нажатий: {current} / {required}",
-            requiredHits: 3,
-            successSequence: [
-                "Верно! Это 4-я октава. Ты большой молодец!",
-                "Все пианино разделено на октавы.",
-                "В каждой октаве есть 12 нот: 7 белых и 5 черных.", 
-                " Научиться находить нужную октаву - первый шаг к уверенной игре!",
-                "Перейдем к следующему уроку!"
-            ]
+            helper: "Урок 1",
+            initial: "Сыграй ноту в 4-й октаве",
+            lower: "Нужно выше",
+            higher: "Нужно ниже",
+            octaveProgress: "Сделано: {current} / {required}",
+            requiredHits: 3
         },
         "1": {
-            helper: "Урок 2: Знакомство с клавишами. Теперь попробуй сыграть все белые ноты в 4-й октаве. Я буду запоминать!",
-            initial: "Нажимай разные клавиши (нужно 7)",
-            wrongOctave: "Почти! Но нам нужны ноты именно в 4-й октаве.",
-            progress: "Это нота {noteNameRUS}! Собрано: {progress}",
-            completeSequence: [
-                "Отлично! Ты изучил все базовые ноты.",
-                "Переходим к мелодии!"
-            ]
+            helper: "Урок 2",
+            initial: "Сыграй разные ноты",
+            wrongOctave: "Нужна 4-я октава",
+            progress: "Собрано: {progress}"
         },
         "2": {
-            helper: "Урок 3: Сыграем последовательность!",
-            initial: "Приготовься играть мелодию!",
-            play: "Сыграй: {targetNote}",
-            completeSequence: [
-                "Браво! Ты прошел обучение!"
-            ]
+            helper: "Урок 3",
+            initial: "Сыграй мелодию",
+            play: "Сыграй: {targetNote}"
         },
         "3": {
             helper: "Обучение завершено",
@@ -91,6 +81,9 @@ export class PitchDetectorComponent extends Component {
 
     @property(KeyboardManager)
     public keyboard: KeyboardManager | null = null;
+
+    @property(GuitarFretboardManager)
+    public guitarFretboard: GuitarFretboardManager | null = null;
 
     // Словарь цветов для нот (система "Радуга" или До-ре-ми)
     private readonly NOTE_COLORS: Record<string, Color> = {
@@ -135,13 +128,18 @@ export class PitchDetectorComponent extends Component {
     private lastUnlockedLessonTextSequence: string[] | null = null;
     private lessonTextReadComplete = false;
     private octaveLessonHits = 0;
+    private currentInstrument = "piano";
+    private readonly PIANO_MELODY = ["C4", "D4", "E4"];
+    private readonly GUITAR_NOTE_SEQUENCE = ["C4", "D4", "E4", "F4", "G4", "A4", "B4"];
+    private readonly GUITAR_MELODY = ["C4", "D4", "E4", "G4", "E4", "D4", "C4"];
 
 
     start() {
         this.node.on(Node.EventType.TOUCH_START, this.onTouchStart, this);
+        this.guitarFretboard = this.guitarFretboard || this.findGuitarFretboard((this.node.scene as unknown as Node) || this.node);
         
         // Подтягиваем данные из меню
-        const instrument = (window as any).selectedInstrument || "piano"; 
+        const instrument = (window as any).selectedInstrument || (this.guitarFretboard ? "guitar" : "piano"); 
         this.setupInstrumentRanges(instrument);
 
         if (this.sensitivitySlider) {
@@ -157,6 +155,8 @@ export class PitchDetectorComponent extends Component {
         this.loadLessonTexts();
         
         this.refreshLessonView();
+        this.scheduleOnce(() => this.updateGuitarTargetHighlight(), 0);
+        this.scheduleOnce(() => this.activateScene(), 0);
     }
 
     onDestroy() {
@@ -165,6 +165,25 @@ export class PitchDetectorComponent extends Component {
             this.refreshLessonView,
             this
         );
+    }
+
+    private clearInstrumentHighlights() {
+        if (this.keyboard) this.keyboard.highlightNote("");
+        if (this.guitarFretboard) this.guitarFretboard.highlightNote("");
+    }
+
+    private findGuitarFretboard(root: Node | null): GuitarFretboardManager | null {
+        if (!root) return null;
+
+        const manager = root.getComponent(GuitarFretboardManager);
+        if (manager) return manager;
+
+        for (const child of root.children) {
+            const childManager = this.findGuitarFretboard(child);
+            if (childManager) return childManager;
+        }
+
+        return null;
     }
 
     private loadLessonTexts() {
@@ -186,6 +205,9 @@ export class PitchDetectorComponent extends Component {
     async initAudio() {
         if (!this.audioContext) {
             this.audioContext = new AudioContext();
+        }
+
+        if (!this.analyserNode || !this.pitchDetector || !this.inputBuffer) {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const source = this.audioContext.createMediaStreamSource(stream);
             this.analyserNode = this.audioContext.createAnalyser();
@@ -197,6 +219,29 @@ export class PitchDetectorComponent extends Component {
 
             console.log("Audio initialized");
         }
+
+        if (this.audioContext.state === 'suspended') {
+            await this.audioContext.resume();
+        }
+    }
+
+    private async activateScene() {
+        this.focusCanvas();
+
+        try {
+            await this.initAudio();
+        } catch (error) {
+            console.warn('Audio initialization needs user interaction or microphone permission.', error);
+        }
+    }
+
+    private focusCanvas() {
+        const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
+
+        if (!canvas) return;
+
+        canvas.tabIndex = canvas.tabIndex >= 0 ? canvas.tabIndex : 0;
+        canvas.focus();
     }
 
     getNoteByFrequency(frequency: number): object {
@@ -226,7 +271,7 @@ export class PitchDetectorComponent extends Component {
 
         if (!this.checkThreshold()) {
             this.lastNote = "";
-            if (this.keyboard) this.keyboard.highlightNote("");
+            this.clearInstrumentHighlights();
             return;
         }
         
@@ -235,10 +280,12 @@ export class PitchDetectorComponent extends Component {
         if (clarity > 0.8 && pitch > 24) {
             let noteInfo: any = this.getNoteByFrequency(pitch);
 
-            if (noteInfo && this.noteLabel) {
+            if (noteInfo) {
                 const displayText = `${noteInfo.noteName}${noteInfo.octave}`;
                 if (displayText !== this.lastNote) {
-                    this.noteLabel.string = displayText;
+                    if (this.noteLabel) {
+                        this.noteLabel.string = displayText;
+                    }
                     this.lastNote = displayText;
                     // подсветка клавиши на экране
                     if (noteInfo && noteInfo.octave === 4) {
@@ -251,6 +298,9 @@ export class PitchDetectorComponent extends Component {
                     } else {
                         // Если октава не та — гасим все клавиши
                         if (this.keyboard) this.keyboard.highlightNote("");
+                    }
+                    if (this.guitarFretboard) {
+                        this.guitarFretboard.highlightNote(noteInfo.noteName, noteInfo.octave);
                     }
                     // логика уроков...
                     this.checkLessonProgress(noteInfo);
@@ -301,10 +351,16 @@ export class PitchDetectorComponent extends Component {
     }
     
     setupInstrumentRanges(instrument: string) {
-        if (instrument === 'guitar') {
+        this.currentInstrument = instrument === "guitar" ? "guitar" : "piano";
+        const manager = LessonManager.getInstance();
+        manager.setInstrument(this.currentInstrument);
+
+        if (this.currentInstrument === 'guitar') {
+            manager.melodyToPlay = this.GUITAR_MELODY;
             // У гитары частоты ниже, можем подкрутить фильтры
             console.log("Режим: Гитара (E2 - 82Гц)");
         } else {
+            manager.melodyToPlay = this.PIANO_MELODY;
             console.log("Режим: Пианино");
         }
     }
@@ -355,7 +411,12 @@ export class PitchDetectorComponent extends Component {
     // Внутри твоего основного компонента в методе update или после детекции ноты:
 
     private getLessonText(type: LessonType): LessonText {
-        return this.lessonTexts.lessons[type.toString()] || DEFAULT_LESSON_TEXTS.lessons[type.toString()];
+        const key = type.toString();
+        const activeLessons = this.currentInstrument === "guitar" && this.lessonTexts.guitarLessons
+            ? this.lessonTexts.guitarLessons
+            : this.lessonTexts.lessons;
+
+        return activeLessons[key] || DEFAULT_LESSON_TEXTS.lessons[key];
     }
 
     private formatLessonText(text: string, values: Record<string, string>): string {
@@ -394,6 +455,8 @@ export class PitchDetectorComponent extends Component {
     }
 
     private startTextSequence(sequence: string[] | undefined, lesson: LessonType, onComplete?: () => void) {
+        this.playCongratulationSound();
+
         if (!sequence || sequence.length === 0) {
             onComplete?.();
             return;
@@ -416,6 +479,48 @@ export class PitchDetectorComponent extends Component {
         }
 
         this.updateLessonButtons(true, false);
+    }
+
+    private playCongratulationSound() {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioContextClass) return;
+
+        if (!this.audioContext) {
+            this.audioContext = new AudioContextClass();
+        }
+
+        if (this.audioContext.state === 'suspended') {
+            this.audioContext.resume().catch((error) => {
+                console.warn('Could not resume audio context for celebration sound.', error);
+            });
+        }
+
+        const now = this.audioContext.currentTime;
+        const notes = [
+            { frequency: 523.25, start: 0.00, duration: 0.12 },
+            { frequency: 659.25, start: 0.13, duration: 0.12 },
+            { frequency: 783.99, start: 0.26, duration: 0.18 },
+            { frequency: 1046.50, start: 0.46, duration: 0.34 }
+        ];
+
+        notes.forEach((note) => {
+            const oscillator = this.audioContext.createOscillator();
+            const gain = this.audioContext.createGain();
+            const startTime = now + note.start;
+            const endTime = startTime + note.duration;
+
+            oscillator.type = 'triangle';
+            oscillator.frequency.setValueAtTime(note.frequency, startTime);
+
+            gain.gain.setValueAtTime(0.0001, startTime);
+            gain.gain.exponentialRampToValueAtTime(0.45, startTime + 0.025);
+            gain.gain.exponentialRampToValueAtTime(0.0001, endTime);
+
+            oscillator.connect(gain);
+            gain.connect(this.audioContext.destination);
+            oscillator.start(startTime);
+            oscillator.stop(endTime + 0.02);
+        });
     }
 
     private advanceTextSequence(): boolean {
@@ -476,6 +581,11 @@ export class PitchDetectorComponent extends Component {
         const manager = LessonManager.getInstance();
         const fullNote = `${noteInfo.noteName}${noteInfo.octave}`;
 
+        if (this.currentInstrument === "guitar") {
+            this.handleGuitarLesson(noteInfo, fullNote);
+            return;
+        }
+
         switch (manager.currentLesson) {
             case LessonType.FIND_OCTAVE:
                 this.handleOctaveLesson(noteInfo.octave);
@@ -492,6 +602,128 @@ export class PitchDetectorComponent extends Component {
     }
 
     // 1 Урок: Навигация по октавам
+    private handleGuitarLesson(noteInfo: any, fullNote: string) {
+        const manager = LessonManager.getInstance();
+        const lesson = manager.currentLesson;
+        const texts = this.getLessonText(lesson);
+        const targetNote = this.getCurrentGuitarTargetNote();
+
+        if (this.instructionLabelHelper) {
+            this.instructionLabelHelper.string = texts.helper;
+        }
+
+        if (!targetNote) return;
+
+        if (fullNote !== targetNote) {
+            if (this.instructionLabel) {
+                this.instructionLabel.string = this.formatLessonText(texts.play || texts.initial, {
+                    targetNote,
+                    noteNameRUS: noteInfo.noteNameRUS,
+                    progress: this.getGuitarProgressString(texts)
+                });
+            }
+            return;
+        }
+
+        switch (lesson) {
+            case LessonType.FIND_OCTAVE:
+                this.handleGuitarTargetLesson(texts, lesson);
+                break;
+
+            case LessonType.IDENTIFY_NOTES:
+            case LessonType.PLAY_MELODY:
+                this.handleGuitarSequenceLesson(texts, lesson);
+                break;
+        }
+    }
+
+    private handleGuitarTargetLesson(texts: LessonText, lesson: LessonType) {
+        const requiredHits = texts.requiredHits || 3;
+        this.octaveLessonHits = Math.min(this.octaveLessonHits + 1, requiredHits);
+
+        if (this.octaveLessonHits < requiredHits) {
+            if (this.instructionLabel) {
+                this.instructionLabel.string = this.formatLessonText(texts.octaveProgress || '', {
+                    current: this.octaveLessonHits.toString(),
+                    required: requiredHits.toString()
+                });
+            }
+            return;
+        }
+
+        this.guitarFretboard?.clearTargetHighlights();
+        this.startTextSequence(texts.successSequence, lesson);
+    }
+
+    private handleGuitarSequenceLesson(texts: LessonText, lesson: LessonType) {
+        const manager = LessonManager.getInstance();
+        const sequence = this.getCurrentGuitarSequence(texts);
+
+        manager.currentNoteIndex++;
+
+        if (manager.currentNoteIndex >= sequence.length) {
+            this.guitarFretboard?.clearTargetHighlights();
+            this.startTextSequence(texts.completeSequence, lesson);
+            return;
+        }
+
+        this.updateGuitarTargetHighlight();
+
+        if (this.instructionLabel) {
+            this.instructionLabel.string = this.formatLessonText(texts.progress || texts.play || '', {
+                progress: this.getGuitarProgressString(texts),
+                targetNote: sequence[manager.currentNoteIndex]
+            });
+        }
+    }
+
+    private getCurrentGuitarTargetNote(): string | null {
+        const manager = LessonManager.getInstance();
+        const texts = this.getLessonText(manager.currentLesson);
+
+        if (manager.currentLesson === LessonType.FIND_OCTAVE) {
+            return texts.targetNote || "C4";
+        }
+
+        const sequence = this.getCurrentGuitarSequence(texts);
+        return sequence[manager.currentNoteIndex] || null;
+    }
+
+    private getCurrentGuitarSequence(texts: LessonText): string[] {
+        const manager = LessonManager.getInstance();
+
+        if (manager.currentLesson === LessonType.PLAY_MELODY) {
+            return manager.melodyToPlay;
+        }
+
+        return texts.targetNotes || this.GUITAR_NOTE_SEQUENCE;
+    }
+
+    private getGuitarProgressString(texts: LessonText): string {
+        const manager = LessonManager.getInstance();
+        const sequence = this.getCurrentGuitarSequence(texts);
+        const current = Math.min(manager.currentNoteIndex + 1, sequence.length);
+
+        return `${current} / ${sequence.length}`;
+    }
+
+    private updateGuitarTargetHighlight() {
+        if (!this.guitarFretboard) return;
+
+        if (this.currentInstrument !== "guitar") {
+            this.guitarFretboard.clearTargetHighlights();
+            return;
+        }
+
+        const targetNote = this.getCurrentGuitarTargetNote();
+
+        if (targetNote) {
+            this.guitarFretboard.showTargetFullNote(targetNote);
+        } else {
+            this.guitarFretboard.clearTargetHighlights();
+        }
+    }
+
     handleOctaveLesson(octave: number) {
         const lesson = LessonType.FIND_OCTAVE;
         const texts = this.getLessonText(lesson);
@@ -605,5 +837,6 @@ export class PitchDetectorComponent extends Component {
         this.octaveLessonHits = 0;
         this.updateLessonButtons(false, false);
         this.setInstructionText(texts.helper, texts.initial);
+        this.updateGuitarTargetHighlight();
     }
 }

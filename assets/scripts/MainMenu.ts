@@ -9,10 +9,11 @@ export class MainMenu extends Component {
     * Метод для перехода в сцену пианино
     */
    public startGamePiano() {        
+        (window as any).selectedInstrument = "piano";
         // 1. Сначала подгружаем сцену в фоне
         director.preloadScene("GameScenePiano", () => {
             // 2. Когда всё готово — переключаемся
-            director.loadScene("GameScenePiano");
+            this.loadSceneAndFocus("GameScenePiano");
         });
    }
 
@@ -20,8 +21,9 @@ export class MainMenu extends Component {
     * Метод для перехода в сцену гитары
     */
    public startGameGuitar() {
+        (window as any).selectedInstrument = "guitar";
         director.preloadScene("GameSceneGuitar", () => {
-            director.loadScene("GameSceneGuitar");
+            this.loadSceneAndFocus("GameSceneGuitar");
         });
    }
    
@@ -30,7 +32,20 @@ export class MainMenu extends Component {
     */
    public BackMenu() {
         director.preloadScene("MenuScene", () => {
-            director.loadScene("MenuScene");
+            this.loadSceneAndFocus("MenuScene");
+        });
+   }
+
+   private loadSceneAndFocus(sceneName: string) {
+        director.loadScene(sceneName, () => {
+            setTimeout(() => {
+                const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
+
+                if (!canvas) return;
+
+                canvas.tabIndex = canvas.tabIndex >= 0 ? canvas.tabIndex : 0;
+                canvas.focus();
+            }, 0);
         });
    }
 }
